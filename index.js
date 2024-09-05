@@ -58,7 +58,13 @@ const path = require('node:path');
 
   // Функция для очистки имени от недопустимых символов
   const sanitizeFilename = (name) => {
-    return name.replace(/[<>:"/\\|?*.]+/g, '').trim();
+    // Сначала удаляем все запрещённые символы, кроме точки
+    let sanitizedName = name.replace(/[<>:"/\\|?*]+/g, '').trim();
+
+    // Удаляем точку в конце, если она там есть
+    sanitizedName = sanitizedName.replace(/\.+$/, '');
+
+    return sanitizedName;
   };
 
   const currentProductName = await page.evaluate(() => {
