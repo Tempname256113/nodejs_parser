@@ -1,5 +1,7 @@
 const puppeteer = require('puppeteer');
 const fs = require('node:fs');
+const fsPromises = require('node:fs').promises;
+const path = require('node:path');
 
 (async () => {
   const args = process.argv.slice(2);
@@ -12,7 +14,7 @@ const fs = require('node:fs');
     throw new Error('You need to provide product url and region');
   }
 
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({ headless: false });
   const page = await browser.newPage();
 
   await page.setViewport({
@@ -54,7 +56,28 @@ const fs = require('node:fs');
     }
   }, regionName);
 
-  await page.screenshot({ path: 'screenshot.jpg', fullPage: true });
+  // Функция для очистки имени от недопустимых символов
+  const sanitizeFilename = (name) => {
+    return name.replace(/[<>:"/\\|?*.]+/g, '').trim();
+  };
+
+  const currentProductName = await page.evaluate(() => {
+    return document.querySelector(
+      '#__next > div.FeatureAppLayoutBase_layout__0HSBo.FeatureAppLayoutBase_hideBannerMobile__97CUm.FeatureAppLayoutBase_hideBannerTablet__dCMoJ.FeatureAppLayoutBase_hideBannerDesktop__gPdf1 > main > div:nth-child(3) > div > div.ProductPage_title__3hOtE > div:nth-child(2) > h1',
+    ).innerText;
+  });
+
+  const filesPath = path.join(
+    sanitizeFilename(regionName),
+    sanitizeFilename(currentProductName),
+  );
+
+  await fsPromises.mkdir(filesPath, { recursive: true });
+
+  await page.screenshot({
+    path: path.join(filesPath, 'screenshot.jpg'),
+    fullPage: true,
+  });
 
   const productData = await page.evaluate(() => {
     const priceBlock = document.querySelector(
@@ -70,17 +93,13 @@ const fs = require('node:fs');
       '#__next > div.FeatureAppLayoutBase_layout__0HSBo.FeatureAppLayoutBase_hideBannerMobile__97CUm.FeatureAppLayoutBase_hideBannerTablet__dCMoJ.FeatureAppLayoutBase_hideBannerDesktop__gPdf1 > main > div:nth-child(3) > div > div.ProductPage_aboutAndReviews__47Wwu > div.DetailsAndReviews_root__ghQFz > section.Summary_section__n5aJB > div.Summary_reviewsContainer__qTWIu.Summary_reviewsCountContainer___aY6I > div > div',
     );
 
-    console.log(priceBlock);
-    console.log(oldPriceBlock);
-    console.log(ratingBlock);
-    console.log(reviewsBlock);
-
     return {
       price: parseFloat(
         priceBlock.innerText.replace(/[^\d,]/g, '').replace(',', '.'),
       ), // Удаляем всё, кроме чисел и запятой, потом меняем запятую на точку
       priceOld: parseFloat(
-        oldPriceBlock.innerText.replace(/[^\d,]/g, '').replace(',', '.'),
+        oldPriceBlock.innerText?.replace(/[^\d,]/g, '').replace(',', '.') ||
+          'Нет старой цены',
       ), // Аналогично для старой цены
       rating: parseFloat(ratingBlock.innerText),
       reviewCount: parseInt(reviewsBlock.innerText),
@@ -93,7 +112,7 @@ priceOld=${productData.priceOld}
 rating=${productData.rating}
 reviewCount=${productData.reviewCount}
   `;
-  fs.writeFileSync('product.txt', productInfo);
+  fs.writeFileSync(path.join(filesPath, 'product.txt'), productInfo);
 
   await browser.close();
 })();
